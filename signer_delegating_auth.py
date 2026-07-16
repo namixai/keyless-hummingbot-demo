@@ -23,6 +23,7 @@ installing Hummingbot; the connector subclass is defined lazily.
 from __future__ import annotations
 
 import asyncio
+import http.client
 import json
 import urllib.error
 import urllib.request
@@ -117,9 +118,13 @@ def make_auth_class():
                 resp = await loop.run_in_executor(None, self._remote_sign, op, payload)
             except urllib.error.HTTPError as e:
                 raise RuntimeError(f"signer denied/failed op {op!r}: HTTP {e.code}") from e
-            except (urllib.error.URLError, json.JSONDecodeError) as e:
+            except (OSError, http.client.HTTPException, json.JSONDecodeError) as e:
+                # OSError covers URLError, ssl.SSLError, socket timeouts; keep the
+                # wrap-contract: transport failures surface as a clear RuntimeError.
                 raise RuntimeError(f"signer request failed for op {op!r}: {e}") from e
-            if not isinstance(resp, dict) or "signature" not in resp or "api_key" not in resp:
+            if (not isinstance(resp, dict)
+                    or not isinstance(resp.get("signature"), str) or not resp["signature"]
+                    or not isinstance(resp.get("api_key"), str) or not resp["api_key"]):
                 raise RuntimeError(f"signer response for op {op!r} missing signature/api_key")
             params["signature"] = resp["signature"]
             # request.data/params + the header overwrite mirror stock exactly
