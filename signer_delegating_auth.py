@@ -75,8 +75,15 @@ def remote_sign_http(signer_gw: str, bearer: str) -> Callable[[str, str], dict]:
     return _call
 
 
+_AUTH_CLS = None
+
+
 def make_auth_class():
-    """Lazily define the connector subclass (needs hummingbot importable)."""
+    """Lazily define the connector subclass (needs hummingbot importable).
+    Defined once, cached at module level."""
+    global _AUTH_CLS
+    if _AUTH_CLS is not None:
+        return _AUTH_CLS
     from hummingbot.connector.derivative.binance_perpetual.binance_perpetual_auth import (
         BinancePerpetualAuth,
     )
@@ -110,8 +117,10 @@ def make_auth_class():
                 resp = await loop.run_in_executor(None, self._remote_sign, op, payload)
             except urllib.error.HTTPError as e:
                 raise RuntimeError(f"signer denied/failed op {op!r}: HTTP {e.code}") from e
-            except (urllib.error.URLError, json.JSONDecodeError, KeyError) as e:
+            except (urllib.error.URLError, json.JSONDecodeError) as e:
                 raise RuntimeError(f"signer request failed for op {op!r}: {e}") from e
+            if not isinstance(resp, dict) or "signature" not in resp or "api_key" not in resp:
+                raise RuntimeError(f"signer response for op {op!r} missing signature/api_key")
             params["signature"] = resp["signature"]
             # request.data/params + the header overwrite mirror stock exactly
             # (REF lines 30-34) so the request is byte-identical to the stock
@@ -123,7 +132,8 @@ def make_auth_class():
             request.headers = {"X-MBX-APIKEY": resp["api_key"]}    # ← api key returned transiently
             return request
 
-    return SignerDelegatingAuth
+    _AUTH_CLS = SignerDelegatingAuth
+    return _AUTH_CLS
 
 
 # Convenience for real use once hummingbot is installed.
