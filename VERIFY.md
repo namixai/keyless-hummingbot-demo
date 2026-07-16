@@ -117,6 +117,7 @@ except (PathValidationError, PathBuildingError) as e:
 #    raw r||s, and the leaf key must be on P-384 — otherwise a document could
 #    claim a weaker/mismatched algorithm than we verify with.
 phdr = cbor2.loads(protected_bstr) if protected_bstr else {}
+check(isinstance(phdr, dict), "COSE protected header is not a map")
 check(phdr.get(1) == -35, f"COSE alg is not ES384 (-35): {phdr.get(1)}")
 check(len(sig) == 96, f"COSE signature is not 96-byte P-384 r||s: {len(sig)}")
 leaf = x509.load_der_x509_certificate(doc["certificate"])
